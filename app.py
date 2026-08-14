@@ -288,7 +288,7 @@ def overlay_anime_face(
 
     # 横幅・縦幅を別々にいじらない
     # 目と目の距離基準で "全体サイズ" のみ決定
-    target_w = int(eye_distance * 2.75 * face_size_scale)
+    target_w = int(eye_distance * 2.90 * face_size_scale)
 
     anime_ratio = anime.height / max(anime.width, 1)
     target_h = int(target_w * anime_ratio)
@@ -380,7 +380,7 @@ def main():
 
         st.subheader("自動合成の微調整")
 
-        face_size_scale = st.slider(
+face_size_scale = st.slider(
     "アニメ顔サイズ",
     0.70, 1.50, 1.10, 0.01
 )
@@ -395,15 +395,15 @@ def main():
             0.90, 1.40, 1.06, 0.01
         )
 
-        face_mask_expand_y = st.slider(
-            "顔マスク縦方向の広がり",
-            0.90, 1.50, 1.18, 0.01
-        )
+face_mask_expand_y = st.slider(
+    "顔マスク縦方向の広がり",
+    0.90, 1.50, 1.24, 0.01
+)
 
-        face_mask_forehead_ratio = st.slider(
-            "おでこ方向の拡張",
-            0.00, 0.20, 0.05, 0.01
-        )
+face_mask_forehead_ratio = st.slider(
+    "おでこ方向の拡張",
+    0.00, 0.20, 0.09, 0.01
+)
 
         face_mask_blur = st.slider(
             "顔マスクのぼかし",
