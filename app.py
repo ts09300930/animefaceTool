@@ -365,7 +365,7 @@ def main():
     st.title("アニメ顔 自動合成ツール")
     st.caption("V2: 顔検出 + 顔輪郭マスクで、四角い貼り付け感を減らした版")
 
-    with st.sidebar:
+       with st.sidebar:
         st.header("設定")
 
         auto_remove_bg = st.checkbox(
@@ -380,35 +380,37 @@ def main():
 
         st.subheader("自動合成の微調整")
 
-face_size_scale = st.slider(
-    "アニメ顔サイズ",
-    0.70, 1.50, 1.10, 0.01
-)
+        face_size_scale = st.slider(
+            "アニメ顔サイズ",
+            0.70, 1.50, 1.10, 0.01
+        )
 
-vertical_offset_ratio = st.slider(
-    "顔の上下位置補正",
-    -0.20, 0.20, 0.00, 0.01
-)
+        vertical_offset_ratio = st.slider(
+            "顔の上下位置補正",
+            -0.20, 0.20, 0.00, 0.01
+        )
 
-face_mask_expand_x = st.slider(
+        face_mask_expand_x = st.slider(
             "顔マスク横方向の広がり",
             0.90, 1.40, 1.06, 0.01
         )
 
-face_mask_expand_y = st.slider(
-    "顔マスク縦方向の広がり",
-    0.90, 1.50, 1.24, 0.01
-)
+        face_mask_expand_y = st.slider(
+            "顔マスク縦方向の広がり",
+            0.90, 1.50, 1.24, 0.01
+        )
 
-face_mask_forehead_ratio = st.slider(
-    "おでこ方向の拡張",
-    0.00, 0.20, 0.09, 0.01
-)
-face_mask_blur = st.slider(
+        face_mask_forehead_ratio = st.slider(
+            "おでこ方向の拡張",
+            0.00, 0.20, 0.09, 0.01
+        )
+
+        face_mask_blur = st.slider(
             "顔マスクのぼかし",
             0.0, 25.0, 8.0, 0.5
         )
-edge_blur = st.slider(
+
+        edge_blur = st.slider(
             "アニメ顔の境界ぼかし",
             0.0, 8.0, 1.5, 0.1
         )
