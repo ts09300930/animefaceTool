@@ -408,8 +408,7 @@ face_mask_blur = st.slider(
             "顔マスクのぼかし",
             0.0, 25.0, 8.0, 0.5
         )
-
-        edge_blur = st.slider(
+edge_blur = st.slider(
             "アニメ顔の境界ぼかし",
             0.0, 8.0, 1.5, 0.1
         )
