@@ -385,10 +385,10 @@ face_size_scale = st.slider(
     0.70, 1.50, 1.10, 0.01
 )
 
-        vertical_offset_ratio = st.slider(
-            "顔の上下位置補正",
-            -0.20, 0.20, 0.00, 0.01
-        )
+vertical_offset_ratio = st.slider(
+    "顔の上下位置補正",
+    -0.20, 0.20, 0.00, 0.01
+)
 
         face_mask_expand_x = st.slider(
             "顔マスク横方向の広がり",
