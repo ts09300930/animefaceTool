@@ -286,9 +286,13 @@ def overlay_anime_face(
     eye_mid_x, eye_mid_y = face_info.eye_mid
     eye_distance = face_info.eye_distance
 
-    # 横幅・縦幅を別々にいじらない
-    # 目と目の距離基準で "全体サイズ" のみ決定
-    target_w = int(eye_distance * 2.90 * face_size_scale)
+    # 横向きの強さ（0に近いほど正面、1に近いほど横向き）
+    yaw_abs = abs(face_info.yaw_norm)
+
+    # 横向きが強いほど、アニメ顔サイズを少しだけ抑える
+    size_factor = 2.90 - yaw_abs * 0.22
+
+    target_w = int(eye_distance * size_factor * face_size_scale)
 
     anime_ratio = anime.height / max(anime.width, 1)
     target_h = int(target_w * anime_ratio)
@@ -322,12 +326,17 @@ def overlay_anime_face(
     overlay.alpha_composite(anime_rotated, dest=(paste_x, paste_y))
 
     # 人物顔の輪郭に沿ったマスクを作って、四角い貼り付け感を消す
+    # 横向きが強いほど、顔マスクを自動で少し広げる
+    auto_expand_x = face_mask_expand_x + yaw_abs * 0.10
+    auto_expand_y = face_mask_expand_y + yaw_abs * 0.10
+    auto_forehead = face_mask_forehead_ratio + yaw_abs * 0.03
+
     face_mask = create_face_mask(
         base_size=base.size,
         face_info=face_info,
-        expand_x=face_mask_expand_x,
-        expand_y=face_mask_expand_y,
-        forehead_ratio=face_mask_forehead_ratio,
+        expand_x=auto_expand_x,
+        expand_y=auto_expand_y,
+        forehead_ratio=auto_forehead,
         blur_radius=face_mask_blur
     )
 
