@@ -358,23 +358,16 @@ def overlay_anime_face(
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
 
-    anime_resized = anime.resize(
-        (target_w, target_h),
-        Image.LANCZOS
-    )
+anime_resized = anime.resize(
+    (target_w, target_h),
+    Image.LANCZOS
+)
 
-    # 横向き度に応じて、アニメ顔を弱く台形変形
-    anime_warped = perspective_warp_for_yaw(
-        anime_resized,
-        face_info.yaw_norm
-    )
-
-    # 最後に顔全体の傾きを合わせる
-    anime_rotated = anime_warped.rotate(
-        face_info.roll_deg,
-        resample=Image.BICUBIC,
-        expand=True
-    )
+anime_rotated = anime_resized.rotate(
+    face_info.roll_deg,
+    resample=Image.BICUBIC,
+    expand=True
+)
 
     # アニメ画像内の「目の位置」をざっくり仮定
     anime_eye_x = anime_rotated.width * 0.50
