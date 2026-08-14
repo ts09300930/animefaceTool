@@ -364,7 +364,6 @@ def build_zip(file_items):
 def main():
     st.title("アニメ顔 自動合成ツール")
     st.caption("V2: 顔検出 + 顔輪郭マスクで、四角い貼り付け感を減らした版")
-
        with st.sidebar:
         st.header("設定")
 
