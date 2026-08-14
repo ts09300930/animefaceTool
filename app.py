@@ -15,11 +15,12 @@ from PIL import Image, ImageFilter
 
 st.set_page_config(page_title="Anime Face Tool", layout="wide")
 
+# -----------------------------
+# MediaPipe Tasks setup
+# -----------------------------
 
-# -----------------------------
-# MediaPipe setup
-# -----------------------------
-mp_face_mesh = mp.solutions.face_mesh
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+MODEL_PATH = Path("face_landmarker.task")
 
 FACE_OVAL = [
     10, 338, 297, 332, 284, 251, 389, 356, 454, 323,
@@ -36,14 +37,33 @@ CHIN_ID = 152
 
 
 @st.cache_resource
-def get_face_mesh():
-    return mp_face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5
+def ensure_model():
+    if not MODEL_PATH.exists():
+        urlretrieve(MODEL_URL, MODEL_PATH)
+
+    return str(MODEL_PATH)
+
+
+@st.cache_resource
+def get_face_landmarker():
+    model_path = ensure_model()
+
+    base_options = python.BaseOptions(
+        model_asset_path=model_path
     )
 
+    options = vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.IMAGE,
+        num_faces=1,
+        min_face_detection_confidence=0.5,
+        min_face_presence_confidence=0.5,
+        min_tracking_confidence=0.5,
+        output_face_blendshapes=False,
+        output_facial_transformation_matrixes=False,
+    )
+
+    return vision.FaceLandmarker.create_from_options(options)
 
 @dataclass
 class FaceInfo:
@@ -81,31 +101,52 @@ def clamp(v, vmin, vmax):
 # Face analysis
 # -----------------------------
 def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
-    face_mesh = get_face_mesh()
+    landmarker = get_face_landmarker()
+
     rgb = pil_to_rgb_np(image_pil)
     h, w = rgb.shape[:2]
 
-    results = face_mesh.process(rgb)
-    if not results.multi_face_landmarks:
+    mp_image = mp.Image(
+        image_format=mp.ImageFormat.SRGB,
+        data=rgb
+    )
+
+    result = landmarker.detect(mp_image)
+
+    if not result.face_landmarks:
         return None
 
-    face_landmarks = results.multi_face_landmarks[0]
+    face_landmarks = result.face_landmarks[0]
 
     landmarks_px = []
-    for lm in face_landmarks.landmark:
+
+    for lm in face_landmarks:
         x = lm.x * w
         y = lm.y * h
         landmarks_px.append((x, y))
-    landmarks_px = np.array(landmarks_px, dtype=np.float32)
+
+    landmarks_px = np.array(
+        landmarks_px,
+        dtype=np.float32
+    )
 
     oval_pts = landmarks_px[FACE_OVAL]
+
     x_min = float(np.min(oval_pts[:, 0]))
     x_max = float(np.max(oval_pts[:, 0]))
     y_min = float(np.min(oval_pts[:, 1]))
     y_max = float(np.max(oval_pts[:, 1]))
 
-    left_eye = average_point(landmarks_px, LEFT_EYE_IDS)
-    right_eye = average_point(landmarks_px, RIGHT_EYE_IDS)
+    left_eye = average_point(
+        landmarks_px,
+        LEFT_EYE_IDS
+    )
+
+    right_eye = average_point(
+        landmarks_px,
+        RIGHT_EYE_IDS
+    )
+
     nose = landmarks_px[NOSE_TIP_ID]
     chin = landmarks_px[CHIN_ID]
 
@@ -113,28 +154,68 @@ def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
 
     dx = right_eye[0] - left_eye[0]
     dy = right_eye[1] - left_eye[1]
-    eye_distance = float(np.hypot(dx, dy))
 
-    # 顔の回転角（左右の傾き）
-    roll_deg = math.degrees(math.atan2(dy, dx))
+    eye_distance = float(
+        np.hypot(dx, dy)
+    )
 
-    # Yaw の簡易推定
-    eye_mid = (left_eye + right_eye) / 2.0
-    half_eye_dist = max(eye_distance / 2.0, 1e-6)
-    yaw_norm = float((nose[0] - eye_mid[0]) / half_eye_dist)
-    yaw_norm = clamp(yaw_norm, -1.0, 1.0)
+    roll_deg = math.degrees(
+        math.atan2(dy, dx)
+    )
 
-    # Pitch の簡易推定
-    upper = max(nose[1] - eye_mid[1], 1.0)
-    lower = max(chin[1] - nose[1], 1.0)
+    eye_mid = (
+        left_eye + right_eye
+    ) / 2.0
+
+    half_eye_dist = max(
+        eye_distance / 2.0,
+        1e-6
+    )
+
+    yaw_norm = float(
+        (nose[0] - eye_mid[0])
+        / half_eye_dist
+    )
+
+    yaw_norm = clamp(
+        yaw_norm,
+        -1.0,
+        1.0
+    )
+
+    upper = max(
+        nose[1] - eye_mid[1],
+        1.0
+    )
+
+    lower = max(
+        chin[1] - nose[1],
+        1.0
+    )
+
     ratio = lower / upper
-    # ざっくり基準 1.55 からのずれ
-    pitch_norm = float((ratio - 1.55) / 0.75)
-    pitch_norm = clamp(pitch_norm, -1.0, 1.0)
+
+    pitch_norm = float(
+        (ratio - 1.55) / 0.75
+    )
+
+    pitch_norm = clamp(
+        pitch_norm,
+        -1.0,
+        1.0
+    )
 
     return FaceInfo(
-        face_center=(float(face_center[0]), float(face_center[1])),
-        bbox=(x_min, y_min, x_max, y_max),
+        face_center=(
+            float(face_center[0]),
+            float(face_center[1])
+        ),
+        bbox=(
+            x_min,
+            y_min,
+            x_max,
+            y_max
+        ),
         roll_deg=roll_deg,
         yaw_norm=yaw_norm,
         pitch_norm=pitch_norm,
