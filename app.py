@@ -3,7 +3,6 @@ import math
 import zipfile
 from dataclasses import dataclass
 
-import cv2
 import mediapipe as mp
 import numpy as np
 import streamlit as st
