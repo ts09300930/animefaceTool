@@ -404,8 +404,7 @@ face_mask_forehead_ratio = st.slider(
     "おでこ方向の拡張",
     0.00, 0.20, 0.09, 0.01
 )
-
-        face_mask_blur = st.slider(
+face_mask_blur = st.slider(
             "顔マスクのぼかし",
             0.0, 25.0, 8.0, 0.5
         )
