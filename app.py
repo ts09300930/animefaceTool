@@ -1,4 +1,5 @@
 import io
+import cv2
 import math
 import zipfile
 from dataclasses import dataclass
@@ -261,6 +262,63 @@ def soften_alpha(img_rgba: Image.Image, blur_radius: float) -> Image.Image:
     return Image.merge("RGBA", (r, g, b, a))
 
 
+def perspective_warp_for_yaw(img: Image.Image, yaw_norm: float) -> Image.Image:
+    """
+    顔の左右向きに応じて、アニメ顔を弱く台形変形する。
+    yaw_norm: -1.0 ～ 1.0
+    """
+    yaw = float(np.clip(yaw_norm, -1.0, 1.0))
+
+    # 弱めの変形
+    warp_strength = abs(yaw) * 0.12
+
+    if warp_strength < 0.01:
+        return img
+
+    arr = np.array(img.convert("RGBA"))
+    h, w = arr.shape[:2]
+
+    offset = int(w * warp_strength)
+
+    # 元画像四隅
+    src = np.float32([
+        [0, 0],
+        [w - 1, 0],
+        [w - 1, h - 1],
+        [0, h - 1]
+    ])
+
+    if yaw > 0:
+        # 右を向いている場合
+        dst = np.float32([
+            [offset, 0],
+            [w - 1, offset // 2],
+            [w - 1, h - 1 - offset // 2],
+            [offset, h - 1]
+        ])
+    else:
+        # 左を向いている場合
+        dst = np.float32([
+            [0, offset // 2],
+            [w - 1 - offset, 0],
+            [w - 1 - offset, h - 1],
+            [0, h - 1 - offset // 2]
+        ])
+
+    matrix = cv2.getPerspectiveTransform(src, dst)
+
+    warped = cv2.warpPerspective(
+        arr,
+        matrix,
+        (w, h),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0, 0, 0, 0)
+    )
+
+    return Image.fromarray(warped, mode="RGBA")
+
+
 # -----------------------------
 # Overlay logic
 # -----------------------------
@@ -300,15 +358,27 @@ def overlay_anime_face(
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
 
-    anime_resized = anime.resize((target_w, target_h), Image.LANCZOS)
+    anime_resized = anime.resize(
+        (target_w, target_h),
+        Image.LANCZOS
+    )
 
-    anime_rotated = anime_resized.rotate(
+    # 横向き度に応じて、アニメ顔を弱く台形変形
+    anime_warped = perspective_warp_for_yaw(
+        anime_resized,
+        face_info.yaw_norm
+    )
+
+    # 最後に顔全体の傾きを合わせる
+    anime_rotated = anime_warped.rotate(
         face_info.roll_deg,
         resample=Image.BICUBIC,
         expand=True
     )
 
-    anime_rotated = soften_alpha(anime_rotated, edge_blur)
+    # アニメ画像内の「目の位置」をざっくり仮定
+    anime_eye_x = anime_rotated.width * 0.50
+    anime_eye_y = anime_rotated.height * 0.38
 
     # アニメ画像内の「目の位置」をざっくり仮定
     # 四角貼り感を減らすため、顔上部を目基準で合わせる
