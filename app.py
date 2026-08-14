@@ -10,17 +10,17 @@ import numpy as np
 import streamlit as st
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 
 st.set_page_config(page_title="Anime Face Tool", layout="wide")
 
+
 # -----------------------------
 # MediaPipe Tasks setup
 # -----------------------------
-
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-MODEL_PATH = Path("face_landmarker.task")
+MODEL_PATH = Path("/tmp/face_landmarker.task")
 
 FACE_OVAL = [
     10, 338, 297, 332, 284, 251, 389, 356, 454, 323,
@@ -40,7 +40,6 @@ CHIN_ID = 152
 def ensure_model():
     if not MODEL_PATH.exists():
         urlretrieve(MODEL_URL, MODEL_PATH)
-
     return str(MODEL_PATH)
 
 
@@ -48,9 +47,7 @@ def ensure_model():
 def get_face_landmarker():
     model_path = ensure_model()
 
-    base_options = python.BaseOptions(
-        model_asset_path=model_path
-    )
+    base_options = python.BaseOptions(model_asset_path=model_path)
 
     options = vision.FaceLandmarkerOptions(
         base_options=base_options,
@@ -65,6 +62,7 @@ def get_face_landmarker():
 
     return vision.FaceLandmarker.create_from_options(options)
 
+
 @dataclass
 class FaceInfo:
     face_center: tuple
@@ -77,6 +75,7 @@ class FaceInfo:
     right_eye: tuple
     eye_mid: tuple
     nose: tuple
+    oval_pts: np.ndarray
 
 
 # -----------------------------
@@ -84,12 +83,6 @@ class FaceInfo:
 # -----------------------------
 def pil_to_rgb_np(img: Image.Image) -> np.ndarray:
     return np.array(img.convert("RGB"))
-
-
-def np_to_pil_rgba(arr: np.ndarray) -> Image.Image:
-    if arr.shape[2] == 3:
-        return Image.fromarray(arr).convert("RGBA")
-    return Image.fromarray(arr)
 
 
 def average_point(landmarks_px, ids):
@@ -123,16 +116,12 @@ def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
     face_landmarks = result.face_landmarks[0]
 
     landmarks_px = []
-
     for lm in face_landmarks:
         x = lm.x * w
         y = lm.y * h
         landmarks_px.append((x, y))
 
-    landmarks_px = np.array(
-        landmarks_px,
-        dtype=np.float32
-    )
+    landmarks_px = np.array(landmarks_px, dtype=np.float32)
 
     oval_pts = landmarks_px[FACE_OVAL]
 
@@ -141,16 +130,8 @@ def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
     y_min = float(np.min(oval_pts[:, 1]))
     y_max = float(np.max(oval_pts[:, 1]))
 
-    left_eye = average_point(
-        landmarks_px,
-        LEFT_EYE_IDS
-    )
-
-    right_eye = average_point(
-        landmarks_px,
-        RIGHT_EYE_IDS
-    )
-
+    left_eye = average_point(landmarks_px, LEFT_EYE_IDS)
+    right_eye = average_point(landmarks_px, RIGHT_EYE_IDS)
     nose = landmarks_px[NOSE_TIP_ID]
     chin = landmarks_px[CHIN_ID]
 
@@ -159,88 +140,35 @@ def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
     dx = right_eye[0] - left_eye[0]
     dy = right_eye[1] - left_eye[1]
 
-    eye_distance = float(
-        np.hypot(dx, dy)
-    )
+    eye_distance = float(np.hypot(dx, dy))
+    roll_deg = math.degrees(math.atan2(dy, dx))
 
-    roll_deg = math.degrees(
-        math.atan2(dy, dx)
-    )
+    eye_mid = (left_eye + right_eye) / 2.0
+    half_eye_dist = max(eye_distance / 2.0, 1e-6)
 
-    eye_mid = (
-        left_eye + right_eye
-    ) / 2.0
+    yaw_norm = float((nose[0] - eye_mid[0]) / half_eye_dist)
+    yaw_norm = clamp(yaw_norm, -1.0, 1.0)
 
-    half_eye_dist = max(
-        eye_distance / 2.0,
-        1e-6
-    )
-
-    yaw_norm = float(
-        (nose[0] - eye_mid[0])
-        / half_eye_dist
-    )
-
-    yaw_norm = clamp(
-        yaw_norm,
-        -1.0,
-        1.0
-    )
-
-    upper = max(
-        nose[1] - eye_mid[1],
-        1.0
-    )
-
-    lower = max(
-        chin[1] - nose[1],
-        1.0
-    )
-
+    upper = max(nose[1] - eye_mid[1], 1.0)
+    lower = max(chin[1] - nose[1], 1.0)
     ratio = lower / upper
 
-    pitch_norm = float(
-        (ratio - 1.55) / 0.75
-    )
-
-    pitch_norm = clamp(
-        pitch_norm,
-        -1.0,
-        1.0
-    )
+    pitch_norm = float((ratio - 1.55) / 0.75)
+    pitch_norm = clamp(pitch_norm, -1.0, 1.0)
 
     return FaceInfo(
-    face_center=(
-        float(face_center[0]),
-        float(face_center[1])
-    ),
-    bbox=(
-        x_min,
-        y_min,
-        x_max,
-        y_max
-    ),
-    roll_deg=roll_deg,
-    yaw_norm=yaw_norm,
-    pitch_norm=pitch_norm,
-    eye_distance=eye_distance,
-    left_eye=(
-        float(left_eye[0]),
-        float(left_eye[1])
-    ),
-    right_eye=(
-        float(right_eye[0]),
-        float(right_eye[1])
-    ),
-    eye_mid=(
-        float(eye_mid[0]),
-        float(eye_mid[1])
-    ),
-    nose=(
-        float(nose[0]),
-        float(nose[1])
+        face_center=(float(face_center[0]), float(face_center[1])),
+        bbox=(x_min, y_min, x_max, y_max),
+        roll_deg=roll_deg,
+        yaw_norm=yaw_norm,
+        pitch_norm=pitch_norm,
+        eye_distance=eye_distance,
+        left_eye=(float(left_eye[0]), float(left_eye[1])),
+        right_eye=(float(right_eye[0]), float(right_eye[1])),
+        eye_mid=(float(eye_mid[0]), float(eye_mid[1])),
+        nose=(float(nose[0]), float(nose[1])),
+        oval_pts=oval_pts
     )
-)
 
 
 # -----------------------------
@@ -261,10 +189,13 @@ def crop_to_alpha(img_rgba: Image.Image) -> Image.Image:
     arr = np.array(img_rgba.convert("RGBA"))
     alpha = arr[:, :, 3]
     ys, xs = np.where(alpha > 10)
+
     if len(xs) == 0 or len(ys) == 0:
         return img_rgba
+
     x1, x2 = xs.min(), xs.max()
     y1, y2 = ys.min(), ys.max()
+
     return img_rgba.crop((x1, y1, x2 + 1, y2 + 1))
 
 
@@ -275,7 +206,6 @@ def prepare_anime_face(
 ) -> Image.Image:
     anime_rgba = anime_pil.convert("RGBA")
 
-    # アルファが全部 255 で、背景が白っぽい場合に簡易透過
     alpha = np.array(anime_rgba)[:, :, 3]
     all_opaque = np.all(alpha == 255)
 
@@ -287,23 +217,64 @@ def prepare_anime_face(
 
 
 # -----------------------------
-# Overlay logic
+# Mask helpers
 # -----------------------------
+def create_face_mask(
+    base_size: tuple,
+    face_info: FaceInfo,
+    expand_x: float,
+    expand_y: float,
+    forehead_ratio: float,
+    blur_radius: float
+) -> Image.Image:
+    w, h = base_size
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+
+    pts = np.array(face_info.oval_pts, dtype=np.float32)
+    cx, cy = face_info.face_center
+    face_w = face_info.bbox[2] - face_info.bbox[0]
+    face_h = face_info.bbox[3] - face_info.bbox[1]
+
+    # 顔輪郭を少し拡張
+    pts[:, 0] = (pts[:, 0] - cx) * expand_x + cx
+    pts[:, 1] = (pts[:, 1] - cy) * expand_y + cy
+
+    # おでこ方向へ少しだけ上に持ち上げる
+    pts[:, 1] -= face_h * forehead_ratio
+
+    polygon = [tuple(p) for p in pts]
+    draw.polygon(polygon, fill=255)
+
+    if blur_radius > 0:
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+    return mask
+
+
 def soften_alpha(img_rgba: Image.Image, blur_radius: float) -> Image.Image:
     if blur_radius <= 0:
         return img_rgba
+
     r, g, b, a = img_rgba.split()
     a = a.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     return Image.merge("RGBA", (r, g, b, a))
 
 
+# -----------------------------
+# Overlay logic
+# -----------------------------
 def overlay_anime_face(
     base_pil: Image.Image,
     anime_face_pil: Image.Image,
     face_info: FaceInfo,
-    width_scale: float,
-    height_scale: float,
-    blur_radius: float
+    face_size_scale: float,
+    face_mask_expand_x: float,
+    face_mask_expand_y: float,
+    face_mask_forehead_ratio: float,
+    face_mask_blur: float,
+    edge_blur: float,
+    vertical_offset_ratio: float
 ) -> Image.Image:
     base = base_pil.convert("RGBA")
     anime = anime_face_pil.convert("RGBA")
@@ -314,17 +285,13 @@ def overlay_anime_face(
 
     eye_mid_x, eye_mid_y = face_info.eye_mid
     eye_distance = face_info.eye_distance
-    yaw = face_info.yaw_norm
-    pitch = face_info.pitch_norm
 
-    # --- 重要 ---
-    # 横幅は yaw で変えない
-    # 目と目の距離を基準にサイズ決定
-    target_w = int(eye_distance * 2.6 * width_scale)
+    # 横幅・縦幅を別々にいじらない
+    # 目と目の距離基準で "全体サイズ" のみ決定
+    target_w = int(eye_distance * 2.55 * face_size_scale)
 
-    # 元画像の縦横比を維持
-    anime_ratio = anime.height / anime.width
-    target_h = int(target_w * anime_ratio * height_scale)
+    anime_ratio = anime.height / max(anime.width, 1)
+    target_h = int(target_w * anime_ratio)
 
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
@@ -337,22 +304,45 @@ def overlay_anime_face(
         expand=True
     )
 
-    anime_rotated = soften_alpha(anime_rotated, blur_radius)
+    anime_rotated = soften_alpha(anime_rotated, edge_blur)
 
-    # 目の位置を基準に置く
-    # 画像の中で「目」がだいたい上から 38% くらいにある想定
+    # アニメ画像内の「目の位置」をざっくり仮定
+    # 四角貼り感を減らすため、顔上部を目基準で合わせる
     anime_eye_x = anime_rotated.width * 0.50
     anime_eye_y = anime_rotated.height * 0.38
 
-    # 少しだけ補正
-    shift_x = yaw * face_w * 0.03
-    shift_y = pitch * face_h * 0.02
+    shift_x = face_info.yaw_norm * face_w * 0.02
+    shift_y = face_info.pitch_norm * face_h * 0.02 + face_h * vertical_offset_ratio
 
     paste_x = int(eye_mid_x - anime_eye_x + shift_x)
     paste_y = int(eye_mid_y - anime_eye_y + shift_y)
 
+    # まず透明キャンバス上にアニメ顔を配置
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    overlay.alpha_composite(anime_rotated, dest=(paste_x, paste_y))
+
+    # 人物顔の輪郭に沿ったマスクを作って、四角い貼り付け感を消す
+    face_mask = create_face_mask(
+        base_size=base.size,
+        face_info=face_info,
+        expand_x=face_mask_expand_x,
+        expand_y=face_mask_expand_y,
+        forehead_ratio=face_mask_forehead_ratio,
+        blur_radius=face_mask_blur
+    )
+
+    overlay_arr = np.array(overlay)
+    mask_arr = np.array(face_mask)
+
+    overlay_alpha = overlay_arr[:, :, 3].astype(np.float32)
+    masked_alpha = overlay_alpha * (mask_arr.astype(np.float32) / 255.0)
+    overlay_arr[:, :, 3] = masked_alpha.astype(np.uint8)
+
+    overlay_masked = Image.fromarray(overlay_arr, mode="RGBA")
+
     out = base.copy()
-    out.alpha_composite(anime_rotated, dest=(paste_x, paste_y))
+    out.alpha_composite(overlay_masked)
+
     return out
 
 
@@ -360,9 +350,6 @@ def overlay_anime_face(
 # ZIP helper
 # -----------------------------
 def build_zip(file_items):
-    """
-    file_items: list of (filename, bytes)
-    """
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for filename, data in file_items:
@@ -376,19 +363,63 @@ def build_zip(file_items):
 # -----------------------------
 def main():
     st.title("アニメ顔 自動合成ツール")
-    st.caption("V1: 元写真の顔位置・サイズ・角度を自動検出して、アニメ顔を複数画像へまとめて合成します。")
+    st.caption("V2: 顔検出 + 顔輪郭マスクで、四角い貼り付け感を減らした版")
 
     with st.sidebar:
         st.header("設定")
-        auto_remove_bg = st.checkbox("アニメ顔の白背景を自動で透過（簡易）", value=True)
-        white_threshold = st.slider("白背景判定しきい値", 220, 255, 245)
+
+        auto_remove_bg = st.checkbox(
+            "アニメ顔の白背景を自動で透過（簡易）",
+            value=True
+        )
+
+        white_threshold = st.slider(
+            "白背景判定しきい値",
+            220, 255, 245
+        )
 
         st.subheader("自動合成の微調整")
-        width_scale = st.slider("顔の横幅スケール", 0.70, 1.60, 1.05, 0.01)
-        height_scale = st.slider("顔の縦幅スケール", 0.70, 1.80, 1.18, 0.01)
-        blur_radius = st.slider("境界ぼかし", 0.0, 6.0, 1.5, 0.1)
 
-    st.info("アニメ顔は **透過PNG** だとかなり綺麗です。JPG でも使えますが、白背景がある場合は簡易透過になります。")
+        face_size_scale = st.slider(
+            "アニメ顔サイズ",
+            0.70, 1.50, 1.00, 0.01
+        )
+
+        vertical_offset_ratio = st.slider(
+            "顔の上下位置補正",
+            -0.20, 0.20, 0.00, 0.01
+        )
+
+        face_mask_expand_x = st.slider(
+            "顔マスク横方向の広がり",
+            0.90, 1.40, 1.06, 0.01
+        )
+
+        face_mask_expand_y = st.slider(
+            "顔マスク縦方向の広がり",
+            0.90, 1.50, 1.18, 0.01
+        )
+
+        face_mask_forehead_ratio = st.slider(
+            "おでこ方向の拡張",
+            0.00, 0.20, 0.05, 0.01
+        )
+
+        face_mask_blur = st.slider(
+            "顔マスクのぼかし",
+            0.0, 25.0, 8.0, 0.5
+        )
+
+        edge_blur = st.slider(
+            "アニメ顔の境界ぼかし",
+            0.0, 8.0, 1.5, 0.1
+        )
+
+    st.info(
+        "この版では、アニメ顔の縦横比を固定したまま合成します。"
+        " 四角い貼り付け感を減らすため、人物の顔輪郭マスクで切り抜いています。"
+        " 透過PNGのアニメ顔だとより自然です。"
+    )
 
     anime_file = st.file_uploader(
         "① アニメ顔画像をアップロード",
@@ -413,6 +444,7 @@ def main():
         if anime_file is None:
             st.error("アニメ顔画像をアップロードしてください。")
             return
+
         if not photo_files:
             st.error("元写真を1枚以上アップロードしてください。")
             return
@@ -439,7 +471,6 @@ def main():
 
                 with st.container():
                     st.markdown(f"### {photo_file.name}")
-
                     col1, col2 = st.columns(2)
 
                     with col1:
@@ -456,9 +487,13 @@ def main():
                         base_pil=base_pil,
                         anime_face_pil=anime_prepared,
                         face_info=face_info,
-                        width_scale=width_scale,
-                        height_scale=height_scale,
-                        blur_radius=blur_radius
+                        face_size_scale=face_size_scale,
+                        face_mask_expand_x=face_mask_expand_x,
+                        face_mask_expand_y=face_mask_expand_y,
+                        face_mask_forehead_ratio=face_mask_forehead_ratio,
+                        face_mask_blur=face_mask_blur,
+                        edge_blur=edge_blur,
+                        vertical_offset_ratio=vertical_offset_ratio
                     )
 
                     with col2:
@@ -470,6 +505,7 @@ def main():
                     img_bytes.seek(0)
 
                     out_name = f"{photo_file.name.rsplit('.', 1)[0]}_anime.png"
+
                     st.download_button(
                         label=f"{out_name} をダウンロード",
                         data=img_bytes.getvalue(),
