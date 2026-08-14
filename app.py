@@ -261,6 +261,49 @@ def soften_alpha(img_rgba: Image.Image, blur_radius: float) -> Image.Image:
     a = a.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     return Image.merge("RGBA", (r, g, b, a))
 
+def apply_bottom_fade(
+    img_rgba: Image.Image,
+    fade_start_ratio: float = 0.72,
+    fade_power: float = 1.4
+) -> Image.Image:
+    """
+    画像の下側だけ徐々に透明にする。
+    上・左右には一切影響しない。
+
+    fade_start_ratio:
+        0.72なら画像高さの72%までは完全不透明、
+        そこから下端まで徐々に透明になる。
+
+    fade_power:
+        大きいほど下端付近で急に消える。
+    """
+
+    img = img_rgba.convert("RGBA")
+    arr = np.array(img).copy()
+
+    h, w = arr.shape[:2]
+
+    start_y = int(h * fade_start_ratio)
+
+    if start_y >= h:
+        return img
+
+    alpha = arr[:, :, 3].astype(np.float32)
+
+    fade_height = h - start_y
+
+    for y in range(start_y, h):
+        progress = (y - start_y) / max(fade_height - 1, 1)
+
+        # 1.0 → 0.0
+        factor = (1.0 - progress) ** fade_power
+
+        alpha[y, :] *= factor
+
+    arr[:, :, 3] = np.clip(alpha, 0, 255).astype(np.uint8)
+
+    return Image.fromarray(arr, mode="RGBA")
+
 
 def perspective_warp_for_yaw(img: Image.Image, yaw_norm: float) -> Image.Image:
     """
@@ -360,15 +403,20 @@ def overlay_anime_face(
     target_h = max(target_h, 10)
 
     anime_resized = anime.resize(
-        (target_w, target_h),
-        Image.LANCZOS
+    (target_w, target_h),
+    Image.LANCZOS
     )
-
+    # 下側だけ首に向かってフェード
+    anime_faded = apply_bottom_fade(
+    anime_resized,
+    fade_start_ratio=0.72,
+    fade_power=1.4
+    )
     # 人物の顔の傾きだけ合わせる
-    anime_rotated = anime_resized.rotate(
-        face_info.roll_deg,
-        resample=Image.BICUBIC,
-        expand=True
+    anime_rotated = anime_faded.rotate(
+    face_info.roll_deg,
+    resample=Image.BICUBIC,
+    expand=True
     )
 
     # -------------------------
