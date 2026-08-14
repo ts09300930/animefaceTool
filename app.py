@@ -73,6 +73,10 @@ class FaceInfo:
     yaw_norm: float
     pitch_norm: float
     eye_distance: float
+    left_eye: tuple
+    right_eye: tuple
+    eye_mid: tuple
+    nose: tuple
 
 
 # -----------------------------
@@ -206,21 +210,37 @@ def detect_face_info(image_pil: Image.Image) -> FaceInfo | None:
     )
 
     return FaceInfo(
-        face_center=(
-            float(face_center[0]),
-            float(face_center[1])
-        ),
-        bbox=(
-            x_min,
-            y_min,
-            x_max,
-            y_max
-        ),
-        roll_deg=roll_deg,
-        yaw_norm=yaw_norm,
-        pitch_norm=pitch_norm,
-        eye_distance=eye_distance
+    face_center=(
+        float(face_center[0]),
+        float(face_center[1])
+    ),
+    bbox=(
+        x_min,
+        y_min,
+        x_max,
+        y_max
+    ),
+    roll_deg=roll_deg,
+    yaw_norm=yaw_norm,
+    pitch_norm=pitch_norm,
+    eye_distance=eye_distance,
+    left_eye=(
+        float(left_eye[0]),
+        float(left_eye[1])
+    ),
+    right_eye=(
+        float(right_eye[0]),
+        float(right_eye[1])
+    ),
+    eye_mid=(
+        float(eye_mid[0]),
+        float(eye_mid[1])
+    ),
+    nose=(
+        float(nose[0]),
+        float(nose[1])
     )
+)
 
 
 # -----------------------------
@@ -291,29 +311,26 @@ def overlay_anime_face(
     x_min, y_min, x_max, y_max = face_info.bbox
     face_w = x_max - x_min
     face_h = y_max - y_min
-    cx, cy = face_info.face_center
 
-    # 簡易 yaw / pitch 補正
+    eye_mid_x, eye_mid_y = face_info.eye_mid
+    eye_distance = face_info.eye_distance
     yaw = face_info.yaw_norm
     pitch = face_info.pitch_norm
 
-    # 横向きのときは横幅を少しだけ詰める
-    yaw_width_factor = 1.0 - abs(yaw) * 0.10
-    yaw_width_factor = clamp(yaw_width_factor, 0.88, 1.05)
+    # --- 重要 ---
+    # 横幅は yaw で変えない
+    # 目と目の距離を基準にサイズ決定
+    target_w = int(eye_distance * 2.6 * width_scale)
 
-    # 上下向きのときの縦補正
-    pitch_height_factor = 1.0 + pitch * 0.06
-    pitch_height_factor = clamp(pitch_height_factor, 0.92, 1.10)
-
-    target_w = int(face_w * width_scale * yaw_width_factor)
-    target_h = int(face_h * height_scale * pitch_height_factor)
+    # 元画像の縦横比を維持
+    anime_ratio = anime.height / anime.width
+    target_h = int(target_w * anime_ratio * height_scale)
 
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
 
     anime_resized = anime.resize((target_w, target_h), Image.LANCZOS)
 
-    # 回転
     anime_rotated = anime_resized.rotate(
         face_info.roll_deg,
         resample=Image.BICUBIC,
@@ -322,12 +339,17 @@ def overlay_anime_face(
 
     anime_rotated = soften_alpha(anime_rotated, blur_radius)
 
-    # yaw/pitch に応じて中心位置を少しずらす
-    shift_x = yaw * face_w * 0.06
-    shift_y = pitch * face_h * 0.04 - face_h * 0.03
+    # 目の位置を基準に置く
+    # 画像の中で「目」がだいたい上から 38% くらいにある想定
+    anime_eye_x = anime_rotated.width * 0.50
+    anime_eye_y = anime_rotated.height * 0.38
 
-    paste_x = int(cx - anime_rotated.width / 2 + shift_x)
-    paste_y = int(cy - anime_rotated.height / 2 + shift_y)
+    # 少しだけ補正
+    shift_x = yaw * face_w * 0.03
+    shift_y = pitch * face_h * 0.02
+
+    paste_x = int(eye_mid_x - anime_eye_x + shift_x)
+    paste_y = int(eye_mid_y - anime_eye_y + shift_y)
 
     out = base.copy()
     out.alpha_composite(anime_rotated, dest=(paste_x, paste_y))
