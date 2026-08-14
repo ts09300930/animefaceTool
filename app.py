@@ -334,86 +334,73 @@ def overlay_anime_face(
     edge_blur: float,
     vertical_offset_ratio: float
 ) -> Image.Image:
+
     base = base_pil.convert("RGBA")
     anime = anime_face_pil.convert("RGBA")
 
     x_min, y_min, x_max, y_max = face_info.bbox
+
     face_w = x_max - x_min
     face_h = y_max - y_min
 
-    eye_mid_x, eye_mid_y = face_info.eye_mid
-    eye_distance = face_info.eye_distance
+    center_x = (x_min + x_max) / 2
+    chin_y = y_max
 
-    # 横向きの強さ（0に近いほど正面、1に近いほど横向き）
-    yaw_abs = abs(face_info.yaw_norm)
+    # -------------------------
+    # アニメ画像のサイズ
+    # -------------------------
 
-    # 横向きが強いほど、アニメ顔サイズを少しだけ抑える
-    size_factor = 2.90 - yaw_abs * 0.22
+    # 人物の顔幅を基準にする
+    target_w = int(face_w * 1.20 * face_size_scale)
 
-    target_w = int(eye_distance * size_factor * face_size_scale)
-
-    anime_ratio = anime.height / max(anime.width, 1)
-    target_h = int(target_w * anime_ratio)
+    # 四角画像として扱う
+    target_h = target_w
 
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
-    
+
     anime_resized = anime.resize(
         (target_w, target_h),
         Image.LANCZOS
     )
 
+    # 人物の顔の傾きだけ合わせる
     anime_rotated = anime_resized.rotate(
         face_info.roll_deg,
         resample=Image.BICUBIC,
         expand=True
     )
-    
-    # アニメ画像内の「目の位置」をざっくり仮定
-    anime_eye_x = anime_rotated.width * 0.50
-    anime_eye_y = anime_rotated.height * 0.38
 
-    # アニメ画像内の「目の位置」をざっくり仮定
-    # 四角貼り感を減らすため、顔上部を目基準で合わせる
-    anime_eye_x = anime_rotated.width * 0.50
-    anime_eye_y = anime_rotated.height * 0.38
+    # -------------------------
+    # 貼り付け位置
+    # -------------------------
 
-    shift_x = face_info.yaw_norm * face_w * 0.02
-    shift_y = face_info.pitch_norm * face_h * 0.02 + face_h * vertical_offset_ratio
-
-    paste_x = int(eye_mid_x - anime_eye_x + shift_x)
-    paste_y = int(eye_mid_y - anime_eye_y + shift_y)
-
-    # まず透明キャンバス上にアニメ顔を配置
-    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    overlay.alpha_composite(anime_rotated, dest=(paste_x, paste_y))
-
-    # 人物顔の輪郭に沿ったマスクを作って、四角い貼り付け感を消す
-    # 横向きが強いほど、顔マスクを自動で少し広げる
-    auto_expand_x = face_mask_expand_x + yaw_abs * 0.10
-    auto_expand_y = face_mask_expand_y + yaw_abs * 0.10
-    auto_forehead = face_mask_forehead_ratio + yaw_abs * 0.03
-
-    face_mask = create_face_mask(
-        base_size=base.size,
-        face_info=face_info,
-        expand_x=auto_expand_x,
-        expand_y=auto_expand_y,
-        forehead_ratio=auto_forehead,
-        blur_radius=face_mask_blur
+    # 横は顔の中央
+    paste_x = int(
+        center_x - anime_rotated.width / 2
     )
 
-    overlay_arr = np.array(overlay)
-    mask_arr = np.array(face_mask)
+    # アニメ画像下端を
+    # 顎より少し下（首側）に合わせる
+    neck_offset = face_h * 0.10
 
-    overlay_alpha = overlay_arr[:, :, 3].astype(np.float32)
-    masked_alpha = overlay_alpha * (mask_arr.astype(np.float32) / 255.0)
-    overlay_arr[:, :, 3] = masked_alpha.astype(np.uint8)
+    paste_y = int(
+        chin_y
+        + neck_offset
+        - anime_rotated.height
+        + face_h * vertical_offset_ratio
+    )
 
-    overlay_masked = Image.fromarray(overlay_arr, mode="RGBA")
+    # -------------------------
+    # 合成
+    # -------------------------
 
     out = base.copy()
-    out.alpha_composite(overlay_masked)
+
+    out.alpha_composite(
+        anime_rotated,
+        dest=(paste_x, paste_y)
+    )
 
     return out
 
