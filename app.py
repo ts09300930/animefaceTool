@@ -288,7 +288,7 @@ def overlay_anime_face(
 
     # 横幅・縦幅を別々にいじらない
     # 目と目の距離基準で "全体サイズ" のみ決定
-    target_w = int(eye_distance * 2.55 * face_size_scale)
+    target_w = int(eye_distance * 2.75 * face_size_scale)
 
     anime_ratio = anime.height / max(anime.width, 1)
     target_h = int(target_w * anime_ratio)
@@ -381,9 +381,9 @@ def main():
         st.subheader("自動合成の微調整")
 
         face_size_scale = st.slider(
-            "アニメ顔サイズ",
-            0.70, 1.50, 1.00, 0.01
-        )
+    "アニメ顔サイズ",
+    0.70, 1.50, 1.10, 0.01
+)
 
         vertical_offset_ratio = st.slider(
             "顔の上下位置補正",
