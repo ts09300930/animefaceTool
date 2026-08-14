@@ -390,7 +390,7 @@ vertical_offset_ratio = st.slider(
     -0.20, 0.20, 0.00, 0.01
 )
 
-        face_mask_expand_x = st.slider(
+face_mask_expand_x = st.slider(
             "顔マスク横方向の広がり",
             0.90, 1.40, 1.06, 0.01
         )
