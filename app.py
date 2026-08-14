@@ -401,19 +401,13 @@ def overlay_anime_face(
 
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
-
+    
     anime_resized = anime.resize(
     (target_w, target_h),
     Image.LANCZOS
     )
-    # 下側だけ首に向かってフェード
-    anime_faded = apply_bottom_fade(
-    anime_resized,
-    fade_start_ratio=0.72,
-    fade_power=1.4
-    )
     # 人物の顔の傾きだけ合わせる
-    anime_rotated = anime_faded.rotate(
+    anime_rotated = anime_resized.rotate(
     face_info.roll_deg,
     resample=Image.BICUBIC,
     expand=True
