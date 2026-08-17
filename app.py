@@ -317,7 +317,11 @@ def overlay_anime_face(
     face_mask_forehead_ratio: float,
     face_mask_blur: float,
     edge_blur: float,
-    vertical_offset_ratio: float
+    vertical_offset_ratio: float,
+    manual_dx: int = 0,
+    manual_dy: int = 0,
+    manual_angle_deg: float = 0.0,
+    manual_scale: float = 1.0,
 ) -> Image.Image:
 
     base = base_pil.convert("RGBA")
@@ -334,38 +338,33 @@ def overlay_anime_face(
     # -------------------------
     # アニメ画像のサイズ
     # -------------------------
-
-    # 人物の顔幅を基準にする
-    target_w = int(face_w * 1.20 * face_size_scale)
-
-    # 四角画像として扱う
+    target_w = int(face_w * 1.20 * face_size_scale * manual_scale)
     target_h = target_w
 
     target_w = max(target_w, 10)
     target_h = max(target_h, 10)
-    
+
     anime_resized = anime.resize(
-    (target_w, target_h),
-    Image.LANCZOS
+        (target_w, target_h),
+        Image.LANCZOS
     )
-    # 人物の顔の傾きだけ合わせる
+
+    # 自動角度 + 手動角度
+    final_angle = face_info.roll_deg + manual_angle_deg
+
     anime_rotated = anime_resized.rotate(
-    face_info.roll_deg,
-    resample=Image.BICUBIC,
-    expand=True
+        final_angle,
+        resample=Image.BICUBIC,
+        expand=True
     )
 
     # -------------------------
     # 貼り付け位置
     # -------------------------
-
-    # 横は顔の中央
     paste_x = int(
-        center_x - anime_rotated.width / 2
+        center_x - anime_rotated.width / 2 + manual_dx
     )
 
-    # アニメ画像下端を
-    # 顎より少し下（首側）に合わせる
     neck_offset = face_h * 0.10
 
     paste_y = int(
@@ -373,12 +372,12 @@ def overlay_anime_face(
         + neck_offset
         - anime_rotated.height
         + face_h * vertical_offset_ratio
+        + manual_dy
     )
 
     # -------------------------
     # 合成
     # -------------------------
-
     out = base.copy()
 
     out.alpha_composite(
@@ -525,6 +524,34 @@ def main():
                         fail_count += 1
                         continue
 
+                    adjust_id = f"{idx}_{photo_file.name}"
+
+                    with col2:
+                        with st.expander("手動調整", expanded=False):
+                            manual_dx = st.slider(
+                                "左右移動",
+                                -400, 400, 0, 1,
+                                key=f"dx_{adjust_id}"
+                            )
+
+                            manual_dy = st.slider(
+                                "上下移動",
+                                -400, 400, 0, 1,
+                                key=f"dy_{adjust_id}"
+                            )
+
+                            manual_angle_deg = st.slider(
+                                "角度補正",
+                                -30.0, 30.0, 0.0, 0.5,
+                                key=f"angle_{adjust_id}"
+                            )
+
+                            manual_scale = st.slider(
+                                "サイズ補正",
+                                0.50, 1.80, 1.00, 0.01,
+                                key=f"scale_{adjust_id}"
+                            )
+
                     out_img = overlay_anime_face(
                         base_pil=base_pil,
                         anime_face_pil=anime_prepared,
@@ -535,7 +562,11 @@ def main():
                         face_mask_forehead_ratio=face_mask_forehead_ratio,
                         face_mask_blur=face_mask_blur,
                         edge_blur=edge_blur,
-                        vertical_offset_ratio=vertical_offset_ratio
+                        vertical_offset_ratio=vertical_offset_ratio,
+                        manual_dx=manual_dx,
+                        manual_dy=manual_dy,
+                        manual_angle_deg=manual_angle_deg,
+                        manual_scale=manual_scale
                     )
 
                     with col2:
