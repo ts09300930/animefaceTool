@@ -476,12 +476,15 @@ def main():
 
     run_btn = st.button("③ 自動合成を実行", type="primary")
 
+    if run_btn:
+       st.session_state["processing_started"] = True
+
     if anime_file is not None:
         anime_preview = Image.open(anime_file)
         st.subheader("アニメ顔プレビュー")
         st.image(anime_preview, width=250)
 
-    if run_btn:
+    if st.session_state.get("processing_started", False):
         if anime_file is None:
             st.error("アニメ顔画像をアップロードしてください。")
             return
